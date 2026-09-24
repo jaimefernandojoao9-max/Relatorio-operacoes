@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Relatório de Operações Diárias</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --shell: #eee9dd;
+    --shell-raised: #f8f5ec;
+    --ink: #23261e;
+    --ink-soft: #63614f;
+    --ink-faint: #93907a;
+    --rule: #cdc4a9;
+    --accent: #2f5d62;
+    --accent-ink: #f3f1e6;
+    --accent-soft: #dde6e2;
+    --warn: #a6472b;
+    --ok: #3f6b3f;
+    --radius: 3px;
+    --paper: #fbf9f2;
+    --paper-line: #17150f;
+    --paper-head: #e7e2d0;
+    --paper-cell: #f0ede0;
+    --paper-soft: #8a8672;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --shell: #191b16; --shell-raised: #22251d;
+      --ink: #ece7d7; --ink-soft: #aca88f; --ink-faint: #726f5c;
+      --rule: #3b3c30; --accent: #7bb0aa; --accent-ink: #101512; --accent-soft: #223330;
+      --warn: #d9886b; --ok: #85b285;
+    }
+  }
+  :root[data-theme="dark"] {
+    --shell: #191b16; --shell-raised: #22251d;
+    --ink: #ece7d7; --ink-soft: #aca88f; --ink-faint: #726f5c;
+    --rule: #3b3c30; --accent: #7bb0aa; --accent-ink: #101512; --accent-soft: #223330;
+    --warn: #d9886b; --ok: #85b285;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--shell); color: var(--ink);
+    font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    min-height: 100vh; padding-bottom: 96px;
+  }
+  .wrap { max-width: 660px; margin: 0 auto; padding: 0 14px; }
+
+  header.top { padding: 20px 14px 14px; border-bottom: 1px solid var(--rule); background: var(--shell-raised); }
+  header.top .inner { max-width: 660px; margin: 0 auto; }
+  .kicker { font-size: 11px; color: var(--ink-faint); margin: 0 0 3px; }
+  h1.title { font-family: 'Newsreader', Georgia, serif; font-weight: 600; font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  .status-line { margin-top: 8px; font-size: 12px; color: var(--ink-faint); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .dot.live { background: var(--ok); }
+  .dot.local { background: var(--warn); }
+
+  nav.tabs { display: flex; gap: 2px; margin-top: 14px; border-bottom: 1px solid var(--rule); }
+  nav.tabs button {
+    flex: 1; appearance: none; border: none; background: none; font-family: inherit;
+    font-size: 13px; font-weight: 500; color: var(--ink-soft); padding: 9px 4px 10px;
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  nav.tabs button .n {
+    display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 5px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600;
+  }
+
+  main { padding-top: 16px; }
+  section.panel { display: none; }
+  section.panel.active { display: block; }
+
+  /* ---- paper sheet: intentionally stays paper-toned regardless of app theme ---- */
+  .sheet {
+    background: var(--paper); color: var(--paper-line);
+    border: 1px solid var(--paper-line); border-radius: 2px;
+    padding: 18px 14px 20px; margin-bottom: 84px;
+  }
+  .sheet h1.doc-title {
+    font-family: 'Newsreader', Georgia, serif; font-weight: 700; font-size: 20px;
+    text-align: center; margin: 2px 0 16px; letter-spacing: 0.01em;
+  }
+  .protocolo-line { text-align: center; font-size: 11px; color: var(--paper-soft); margin: -10px 0 16px; }
+
+  .sec { margin-bottom: 16px; }
+  .sec-head {
+    background: var(--paper-head); border: 1px solid var(--paper-line); border-bottom: none;
+    text-align: center; font-weight: 700; font-size: 12.5px; padding: 6px 8px; letter-spacing: 0.01em;
+  }
+  .scrollx { overflow-x: auto; }
+  table.doc {
+    width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 460px;
+  }
+  table.doc th, table.doc td {
+    border: 1px solid var(--paper-line); padding: 0; vertical-align: middle;
+  }
+  table.doc th {
+    background: var(--paper-head); font-size: 11px; font-weight: 600; padding: 6px 6px; text-align: center;
+  }
+  table.doc td.label {
+    background: var(--paper-head); font-weight: 700; font-size: 12px; padding: 7px 8px; width: 30%;
+  }
+  table.doc td.val { background: var(--paper-cell); }
+  table.doc td.val input, table.doc td input {
+    width: 100%; border: none; background: transparent; font-family: inherit; color: var(--paper-line);
+    font-size: 13px; padding: 7px 7px; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  table.doc td.val input[type="date"] { text-align: left; }
+  table.doc td input::placeholder { color: var(--paper-soft); }
+  table.doc td input[readonly] { color: var(--paper-line); font-weight: 600; background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.035) 4px, rgba(0,0,0,0.035) 8px); }
+  table.doc td.desc input { text-align: left; }
+  table.doc td.rm { width: 34px; text-align: center; background: var(--paper); }
+  table.doc td.rm button {
+    background: none; border: none; color: var(--warn); font-size: 15px; line-height: 1; cursor: pointer; padding: 4px;
+  }
+
+  .add-row {
+    width: 100%; background: var(--paper); border: 1px solid var(--paper-line); border-top: none;
+    color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px; cursor: pointer;
+  }
+  .add-row:hover { background: var(--accent-soft); }
+
+  textarea.obs {
+    width: 100%; box-sizing: border-box; border: 1px solid var(--paper-line);
+    background: var(--paper-cell) repeating-linear-gradient(var(--paper-cell) 0, var(--paper-cell) 23px, var(--paper-line) 24px);
+    background-size: 100% 24px; color: var(--paper-line); font-family: inherit; font-size: 13px;
+    padding: 6px 8px; min-height: 96px; line-height: 24px; resize: vertical;
+  }
+  textarea.obs::placeholder { color: var(--paper-soft); -webkit-text-fill-color: var(--paper-soft); line-height: 1.4; }
+
+  .sig-block { border: 1px solid var(--paper-line); }
+  .sig-row { display: flex; border-bottom: 1px solid var(--paper-line); }
+  .sig-row:last-child { border-bottom: none; }
+  .sig-row .sig-label {
+    width: 96px; flex: none; background: var(--paper-head); font-weight: 700; font-size: 11.5px;
+    display: flex; align-items: center; padding: 8px; border-right: 1px solid var(--paper-line);
+  }
+  .sig-row input[type="text"] {
+    flex: 1; border: none; background: var(--paper-cell); font-family: inherit; color: var(--paper-line);
+    font-size: 13px; padding: 8px;
+  }
+  .sig-check {
+    flex: 1; background: var(--paper-cell); display: flex; align-items: center; gap: 7px; padding: 8px; font-size: 11.5px; color: var(--paper-soft);
+  }
+  .sig-check input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+
+  .field { margin-bottom: 0; }
+
+  .submit-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--shell-raised);
+    border-top: 1px solid var(--rule); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); z-index: 5;
+  }
+  .submit-bar .inner { max-width: 660px; margin: 0 auto; display: flex; gap: 8px; }
+  button.primary {
+    flex: 1; background: var(--accent); color: var(--accent-ink); border: none; border-radius: var(--radius);
+    font-family: inherit; font-size: 14px; font-weight: 600; padding: 13px; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.6; }
+  button.ghost {
+    background: none; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--ink-soft);
+    font-family: inherit; font-size: 12.5px; padding: 0 14px; cursor: pointer;
+  }
+
+  .empty { text-align: center; padding: 44px 20px; color: var(--ink-faint); }
+  .empty .glyph { font-size: 24px; margin-bottom: 8px; opacity: 0.6; }
+  .empty p { margin: 4px 0 0; font-size: 13px; }
+
+  .security-note {
+    display: flex; gap: 8px; align-items: flex-start; background: var(--shell-raised); border: 1px solid var(--rule);
+    border-radius: var(--radius); padding: 10px 11px; margin-bottom: 14px; font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+  }
+  .security-note .g { flex: none; font-size: 14px; }
+
+  .report-item { background: var(--shell-raised); border: 1px solid var(--rule); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+  .report-item summary {
+    list-style: none; cursor: pointer; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .report-item summary::-webkit-details-marker { display: none; }
+  .ri-left { min-width: 0; }
+  .ri-date { font-family: 'Newsreader', Georgia, serif; font-size: 16px; font-weight: 600; }
+  .ri-sub { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .ri-total { text-align: right; flex: none; }
+  .ri-total .v { font-size: 14px; font-weight: 600; }
+  .ri-total .l { font-size: 10px; color: var(--ink-faint); }
+  .report-item[open] summary { border-bottom: 1px solid var(--rule); }
+  .ri-body { padding: 12px; }
+  .ri-section { margin-bottom: 13px; }
+  .ri-section:last-child { margin-bottom: 0; }
+  .ri-section h3 { font-size: 10px; font-weight: 600; letter-spacing: 0.03em; color: var(--ink-faint); margin: 0 0 7px; }
+  table.ri-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.ri-table th, table.ri-table td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--rule); }
+  table.ri-table th { font-weight: 500; color: var(--ink-faint); font-size: 10px; }
+  table.ri-table td.num { text-align: right; }
+  .totals-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 7px; }
+  .tstat { background: var(--shell); border: 1px solid var(--rule); border-radius: var(--radius); padding: 7px 9px; }
+  .tstat .l { font-size: 10px; color: var(--ink-faint); }
+  .tstat .v { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .obs-text { font-size: 12.5px; white-space: pre-wrap; color: var(--ink-soft); }
+  .sig-line { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .sig-line b { color: var(--ink); font-weight: 500; }
+  .proto { font-size: 11px; color: var(--ink-faint); }
+
+  .share-row { display: flex; gap: 7px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--rule); flex-wrap: wrap; }
+  .share-row a, .share-row button {
+    flex: 1; min-width: 100px; text-align: center; text-decoration: none;
+    font-family: inherit; font-size: 12px; font-weight: 500; border-radius: var(--radius); padding: 9px 6px; cursor: pointer;
+  }
+  .share-row .wa { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent); }
+  .share-row .mail { background: var(--shell); border: 1px solid var(--rule); color: var(--ink-soft); }
+  .share-row .copy { background: var(--shell); border: 1px solid var(--rule); color: var(--ink-soft); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(10px);
+    background: var(--ink); color: var(--shell); padding: 9px 16px; border-radius: var(--radius);
+    font-size: 12.5px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 20; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .dot.warn { background: var(--warn); }
+
+  .status-line { justify-content: space-between; }
+  .status-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .status-left span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .logout-link {
+    flex: none; background: none; border: none; color: var(--ink-faint); font-family: inherit;
+    font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0;
+  }
+
+  .login-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .login-card {
+    width: 100%; max-width: 340px; background: var(--shell-raised); border: 1px solid var(--rule);
+    border-radius: var(--radius); padding: 22px 20px;
+  }
+  .login-card h1 {
+    font-family: 'Newsreader', Georgia, serif; font-weight: 600; font-size: 21px; margin: 0 0 3px;
+  }
+  .login-card p.sub { font-size: 12px; color: var(--ink-faint); margin: 0 0 18px; }
+  .login-field { margin-bottom: 12px; }
+  .login-field label { display: block; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 4px; }
+  .login-field input {
+    width: 100%; box-sizing: border-box; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--shell); color: var(--ink); font-family: inherit; font-size: 14px; padding: 9px 10px;
+  }
+  .login-error {
+    display: none; background: var(--accent-soft); border: 1px solid var(--warn); color: var(--warn);
+    font-size: 12px; border-radius: var(--radius); padding: 8px 10px; margin-bottom: 12px;
+  }
+  .login-error.show { display: block; }
+  .login-card button.primary { width: 100%; margin-top: 4px; }
+  .auth-tab {
+    flex: 1; padding: 8px; border-radius: var(--radius); border: 1px solid var(--rule);
+    background: var(--shell); color: var(--ink-soft); font-family: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .auth-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen" style="display:none">
+  <div class="login-card">
+    <h1>Relatório de Operações</h1>
+    <p class="sub" id="authSub">Inicia sessão para continuar</p>
+
+    <div style="display:flex; gap:6px; margin-bottom:14px;">
+      <button type="button" class="auth-tab active" id="tabLoginBtn">Entrar</button>
+      <button type="button" class="auth-tab" id="tabSignupBtn">Criar conta</button>
+    </div>
+
+    <div class="login-error" id="loginError"></div>
+
+    <form id="loginForm">
+      <div class="login-field" id="signupNameField" style="display:none">
+        <label for="authName">Nome completo</label>
+        <input type="text" id="authName">
+      </div>
+      <div class="login-field">
+        <label for="authEmail">E-mail</label>
+        <input type="email" id="authEmail" autocomplete="username" required>
+      </div>
+      <div class="login-field">
+        <label for="authPassword">Senha</label>
+        <input type="password" id="authPassword" autocomplete="current-password" required minlength="6">
+      </div>
+      <button class="primary" type="submit" id="authBtn">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="appShell" style="display:none">
+<header class="top">
+  <div class="inner">
+    <p class="kicker">Controle diário</p>
+    <h1 class="title">Relatório de Operações</h1>
+    <div class="status-line">
+      <span class="status-left"><span class="dot" id="statusDot"></span><span id="statusText">Conectando…</span></span>
+      <button type="button" class="logout-link" id="logoutBtn">sair</button>
+    </div>
+    <nav class="tabs" id="tabsNav">
+      <button id="tabNewBtn" aria-selected="true">Novo relatório</button>
+      <button id="tabListBtn" aria-selected="false">Enviados<span class="n" id="countBadge" style="display:none">0</span></button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+
+  <section class="panel active" id="panelNew">
+    <div class="sheet">
+      <h1 class="doc-title">RELATÓRIO DE OPERAÇÕES DIÁRIAS</h1>
+      <p class="protocolo-line" id="protoPreview">protocolo será gerado no envio</p>
+
+      <div class="sec">
+        <div class="sec-head">Detalhes Administrativos</div>
+        <div class="scrollx">
+        <table class="doc">
+          <tr>
+            <td class="label">Data:</td>
+            <td class="val"><input type="date" id="fData"></td>
+            <td class="label">Mês:</td>
+            <td class="val"><input type="text" id="fMes" readonly></td>
+          </tr>
+          <tr>
+            <td class="label">Ano:</td>
+            <td class="val"><input type="text" id="fAno" readonly></td>
+            <td class="label" style="background:var(--paper);border-right:none"></td>
+            <td class="val" style="background:var(--paper);border-left:none"></td>
+          </tr>
+        </table>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">Totais Diários</div>
+        <div class="scrollx">
+        <table class="doc">
+          <tr>
+            <th>Total Diário</th><th>T. Saída</th><th>T. Restante</th><th>T. Reprografia</th><th>T. Banca</th>
+          </tr>
+          <tr>
+            <td class="val"><input type="number" inputmode="decimal" id="tTotal" placeholder="0,00"></td>
+            <td class="val"><input type="number" inputmode="decimal" id="tSaida" placeholder="0,00"></td>
+            <td class="val"><input type="text" id="tRestante" placeholder="0,00" readonly></td>
+            <td class="val"><input type="text" inputmode="decimal" id="tReprografia" placeholder="0,00"></td>
+            <td class="val"><input type="text" inputmode="decimal" id="tBanca" placeholder="0,00"></td>
+          </tr>
+        </table>
+        </div>
+        <p class="ri-sub" style="padding:5px 2px 0">Valores em MZN (Metical). T. Restante = Total Diário − T. Saída · Reprografia e Banca se completam para somar o Total Diário (preencha um, o outro calcula sozinho)</p>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">Detalhamento de Itens</div>
+        <div class="scrollx">
+        <table class="doc">
+          <tr><th style="width:36%">Desc. Material</th><th>Valor Unit.</th><th>Qtd Vendida</th><th>Valor Total</th><th style="width:34px"></th></tr>
+          <tbody id="itemsBody"></tbody>
+        </table>
+        </div>
+        <button type="button" class="add-row" id="addItemBtn">+ Adicionar item</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">Entrada de Materiais (Itens Recebidos)</div>
+        <div class="scrollx">
+        <table class="doc">
+          <tr><th>Data/Hora</th><th>Material</th><th>Qtd</th><th>Recebido Por</th><th style="width:34px"></th></tr>
+          <tbody id="materialsBody"></tbody>
+        </table>
+        </div>
+        <button type="button" class="add-row" id="addMaterialBtn">+ Adicionar entrada</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">Observações</div>
+        <textarea class="obs" id="fObs" placeholder="Alguma ocorrência, pendência ou observação do dia…"></textarea>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">Assinaturas</div>
+        <div class="sig-block">
+          <div class="sig-row">
+            <div class="sig-label">Relator</div>
+            <input type="text" id="fRelator" placeholder="Nome completo">
+          </div>
+          <div class="sig-row">
+            <div class="sig-label">Assinatura</div>
+            <label class="sig-check"><input type="checkbox" id="sigRelator"> confirmo e assino digitalmente como relator</label>
+          </div>
+          <div class="sig-row">
+            <div class="sig-label">Responsável</div>
+            <input type="text" id="fResponsavel" placeholder="Nome completo">
+          </div>
+          <div class="sig-row">
+            <div class="sig-label">Assinatura</div>
+            <label class="sig-check"><input type="checkbox" id="sigResponsavel"> confirmo e assino digitalmente como responsável</label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="security-note">
+      <span class="g">🔒</span>
+      <span>Cada relatório enviado recebe um protocolo e assinatura digital com data/hora, e fica guardado só neste aparelho — não há edição posterior pela interface. Para levar ao chefe, use os botões de PDF, WhatsApp ou e-mail de cada relatório na aba "Enviados".</span>
+    </div>
+  </section>
+
+  <section class="panel" id="panelList">
+    <div id="listContent">
+      <div class="empty"><div class="glyph">◌</div><p>Carregando relatórios…</p></div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<div class="submit-bar" id="submitBar">
+  <div class="inner">
+    <button class="ghost" id="clearBtn" type="button">Limpar</button>
+    <button class="primary" id="sendBtn" type="button">Enviar relatório</button>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Ligação à Supabase (login, sessão, dados)
+  // ---------------------------------------------------------------------
+  var SUPABASE_URL = 'https://tmdxuffcmikeqhalipfg.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_gGPRzjIdTNjWPizaAzMZ8g_mfCrqvv1';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  var currentUser = null; // { id, email, name, role }
+  var authMode = 'login'; // 'login' | 'signup'
+
+  function showLoginScreen(errorMsg){
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appShell').style.display = 'none';
+    var errEl = document.getElementById('loginError');
+    if (errorMsg) { errEl.textContent = errorMsg; errEl.classList.add('show'); }
+    else { errEl.textContent = ''; errEl.classList.remove('show'); }
+  }
+  function showApp(){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appShell').style.display = 'block';
+  }
+
+  function setAuthMode(mode){
+    authMode = mode;
+    document.getElementById('tabLoginBtn').classList.toggle('active', mode === 'login');
+    document.getElementById('tabSignupBtn').classList.toggle('active', mode === 'signup');
+    document.getElementById('signupNameField').style.display = mode === 'signup' ? 'block' : 'none';
+    document.getElementById('authName').required = mode === 'signup';
+    document.getElementById('authSub').textContent = mode === 'signup' ? 'Cria a tua conta' : 'Inicia sessão para continuar';
+    document.getElementById('authBtn').textContent = mode === 'signup' ? 'Criar conta' : 'Entrar';
+    document.getElementById('loginError').classList.remove('show');
+  }
+  document.getElementById('tabLoginBtn').addEventListener('click', function(){ setAuthMode('login'); });
+  document.getElementById('tabSignupBtn').addEventListener('click', function(){ setAuthMode('signup'); });
+
+  document.getElementById('loginForm').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var email = document.getElementById('authEmail').value.trim();
+    var password = document.getElementById('authPassword').value;
+    var name = document.getElementById('authName').value.trim();
+    var btn = document.getElementById('authBtn');
+    var errEl = document.getElementById('loginError');
+    errEl.classList.remove('show');
+    if (!email || !password) return;
+    if (authMode === 'signup' && !name) return;
+
+    btn.disabled = true; btn.textContent = authMode === 'signup' ? 'Criando…' : 'Entrando…';
+
+    var acao = authMode === 'signup'
+      ? sb.auth.signUp({ email: email, password: password, options: { data: { name: name } } })
+      : sb.auth.signInWithPassword({ email: email, password: password });
+
+    acao.then(function(res){
+      if (res.error) { throw res.error; }
+      if (authMode === 'signup' && !res.data.session) {
+        // a Supabase pode exigir confirmação por e-mail antes de libertar a sessão
+        setAuthMode('login');
+        errEl.textContent = 'Conta criada! Verifica o teu e-mail para confirmar e depois inicia sessão.';
+        errEl.classList.add('show');
+        return;
+      }
+      document.getElementById('authPassword').value = '';
+      return iniciarApp();
+    }).catch(function(err){
+      errEl.textContent = traduzErro(err && err.message);
+      errEl.classList.add('show');
+    }).finally(function(){
+      btn.disabled = false; btn.textContent = authMode === 'signup' ? 'Criar conta' : 'Entrar';
+    });
+  });
+
+  function traduzErro(msg){
+    if (!msg) return 'Não foi possível continuar. Tenta novamente.';
+    if (/invalid login credentials/i.test(msg)) return 'E-mail ou senha incorretos.';
+    if (/already registered|already exists/i.test(msg)) return 'Já existe uma conta com este e-mail.';
+    if (/password.*(least|short)/i.test(msg)) return 'A senha deve ter pelo menos 6 caracteres.';
+    if (/email.*invalid/i.test(msg)) return 'E-mail inválido.';
+    return msg;
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function(){
+    sb.auth.signOut().then(function(){ currentUser = null; showLoginScreen(); });
+  });
+
+  var MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  var itemRows = [];
+  var materialRows = [];
+  var reports = [];
+  var uid = 0;
+  function uniq(){ return 'r' + (Date.now()) + '_' + (uid++); }
+
+  function todayISO(){
+    var d = new Date();
+    var m = (d.getMonth()+1); m = m<10 ? '0'+m : ''+m;
+    var day = d.getDate(); day = day<10 ? '0'+day : ''+day;
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+  function updateMesAno(){
+    var v = document.getElementById('fData').value;
+    if (!v) { document.getElementById('fMes').value=''; document.getElementById('fAno').value=''; return; }
+    var parts = v.split('-');
+    var y = parseInt(parts[0],10), mo = parseInt(parts[1],10);
+    document.getElementById('fMes').value = MESES[mo-1] || '';
+    document.getElementById('fAno').value = y;
+  }
+  document.getElementById('fData').value = todayISO();
+  document.getElementById('fData').addEventListener('change', updateMesAno);
+  updateMesAno();
+
+  // ---- auto-calc restante = total - saida ----
+  function recalcRestante(){
+    var total = num(document.getElementById('tTotal').value);
+    var saida = num(document.getElementById('tSaida').value);
+    document.getElementById('tRestante').value = fmt(total - saida);
+  }
+  document.getElementById('tTotal').addEventListener('input', function(){ recalcRestante(); recalcRB('total'); });
+  document.getElementById('tSaida').addEventListener('input', recalcRestante);
+  recalcRestante();
+
+  // ---- reprografia/banca se completam para somar o total diário ----
+  var lastRB = 'reprografia';
+  function recalcRB(source){
+    var total = num(document.getElementById('tTotal').value);
+    var repro = document.getElementById('tReprografia');
+    var banca = document.getElementById('tBanca');
+    if (source === 'reprografia') { banca.value = fmt(total - num(repro.value)); lastRB = 'reprografia'; }
+    else if (source === 'banca') { repro.value = fmt(total - num(banca.value)); lastRB = 'banca'; }
+    else if (source === 'total') {
+      if (lastRB === 'reprografia') banca.value = fmt(total - num(repro.value));
+      else repro.value = fmt(total - num(banca.value));
+    }
+  }
+  document.getElementById('tReprografia').addEventListener('input', function(){ recalcRB('reprografia'); });
+  document.getElementById('tBanca').addEventListener('input', function(){ recalcRB('banca'); });
+
+  // ---- protocolo ----
+  function genProtocolo(){
+    var d = new Date();
+    var p = function(n){ return n<10 ? '0'+n : ''+n; };
+    var rnd = Math.floor(1000 + Math.random()*9000);
+    return 'OP-' + (''+d.getFullYear()).slice(2) + p(d.getMonth()+1) + p(d.getDate()) + '-' + rnd;
+  }
+
+  // ---- dynamic item rows ----
+  function renderItems(){
+    var body = document.getElementById('itemsBody');
+    body.innerHTML = '';
+    itemRows.forEach(function(row, idx){
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="val desc"><input type="text" data-f="desc" placeholder="Ex: Papel A4"></td>' +
+        '<td class="val"><input type="text" inputmode="decimal" data-f="valorUnit" placeholder="0,00"></td>' +
+        '<td class="val"><input type="number" inputmode="decimal" data-f="qtd" placeholder="0"></td>' +
+        '<td class="val"><input type="text" data-f="valor" placeholder="0,00" readonly></td>' +
+        '<td class="rm"><button type="button" data-del title="Remover linha">×</button></td>';
+      tr.querySelectorAll('input').forEach(function(inp){
+        var f = inp.getAttribute('data-f');
+        inp.value = row[f] || '';
+        if (f !== 'valor') {
+          inp.addEventListener('input', function(){
+            row[f] = inp.value;
+            var total = num(row.valorUnit) * num(row.qtd);
+            row.valor = fmt(total);
+            tr.querySelector('[data-f="valor"]').value = row.valor;
+          });
+        }
+      });
+      tr.querySelector('[data-del]').addEventListener('click', function(){ itemRows.splice(idx,1); renderItems(); });
+      body.appendChild(tr);
+    });
+  }
+  function renderMaterials(){
+    var body = document.getElementById('materialsBody');
+    body.innerHTML = '';
+    materialRows.forEach(function(row, idx){
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="val"><input type="text" data-f="dataHora" placeholder="14/03 09:20"></td>' +
+        '<td class="val desc"><input type="text" data-f="material" placeholder="Ex: Toner"></td>' +
+        '<td class="val"><input type="number" inputmode="decimal" data-f="qtd" placeholder="0"></td>' +
+        '<td class="val desc"><input type="text" data-f="recebidoPor" placeholder="Nome"></td>' +
+        '<td class="rm"><button type="button" data-del title="Remover linha">×</button></td>';
+      tr.querySelectorAll('input').forEach(function(inp){
+        inp.value = row[inp.getAttribute('data-f')] || '';
+        inp.addEventListener('input', function(){ row[inp.getAttribute('data-f')] = inp.value; });
+      });
+      tr.querySelector('[data-del]').addEventListener('click', function(){ materialRows.splice(idx,1); renderMaterials(); });
+      body.appendChild(tr);
+    });
+  }
+  document.getElementById('addItemBtn').addEventListener('click', function(){ itemRows.push({desc:'',valorUnit:'',qtd:'',valor:''}); renderItems(); });
+  document.getElementById('addMaterialBtn').addEventListener('click', function(){ materialRows.push({dataHora:'',material:'',qtd:'',recebidoPor:''}); renderMaterials(); });
+  function resetRows(){
+    itemRows = [{desc:'',valorUnit:'',qtd:'',valor:''},{desc:'',valorUnit:'',qtd:'',valor:''},{desc:'',valorUnit:'',qtd:'',valor:''}];
+    materialRows = [{dataHora:'',material:'',qtd:'',recebidoPor:''},{dataHora:'',material:'',qtd:'',recebidoPor:''}];
+    renderItems(); renderMaterials();
+  }
+  resetRows();
+
+  // ---- tabs ----
+  var tabNewBtn = document.getElementById('tabNewBtn');
+  var tabListBtn = document.getElementById('tabListBtn');
+  var panelNew = document.getElementById('panelNew');
+  var panelList = document.getElementById('panelList');
+  var submitBar = document.getElementById('submitBar');
+  function showTab(which){
+    var isNew = which === 'new';
+    panelNew.classList.toggle('active', isNew);
+    panelList.classList.toggle('active', !isNew);
+    tabNewBtn.setAttribute('aria-selected', isNew ? 'true':'false');
+    tabListBtn.setAttribute('aria-selected', isNew ? 'false':'true');
+    submitBar.style.display = isNew ? 'block' : 'none';
+  }
+  tabNewBtn.addEventListener('click', function(){ showTab('new'); });
+  tabListBtn.addEventListener('click', function(){ showTab('list'); });
+
+  var toastTimer = null;
+  function toast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2600);
+  }
+
+  function clearForm(){
+    document.getElementById('fData').value = todayISO();
+    updateMesAno();
+    ['tTotal','tSaida','tReprografia','tBanca','fObs','fRelator','fResponsavel'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('sigRelator').checked = false;
+    document.getElementById('sigResponsavel').checked = false;
+    recalcRestante();
+    resetRows();
+    document.getElementById('protoPreview').textContent = 'protocolo será gerado no envio';
+  }
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    if (confirm('Limpar todos os campos do relatório atual?')) clearForm();
+  });
+
+  function num(v){ var n = parseFloat(String(v).replace(',','.')); return isNaN(n) ? 0 : n; }
+  var FMT_LOCALE = 'pt-PT';
+  try { (0).toLocaleString('pt-MZ'); FMT_LOCALE = 'pt-MZ'; } catch(e){}
+  function fmt(n){ return (n||0).toLocaleString(FMT_LOCALE, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function money(n){ return fmt(n) + ' MT'; }
+
+  function buildReport(){
+    var cleanItems = itemRows.filter(function(r){ return r.desc || r.qtd || r.valorUnit; })
+      .map(function(r){ var qtd = num(r.qtd), vu = num(r.valorUnit); return {desc:r.desc||'', valorUnit:vu, qtd:qtd, valor:vu*qtd}; });
+    var cleanMaterials = materialRows.filter(function(r){ return r.dataHora || r.material || r.qtd || r.recebidoPor; })
+      .map(function(r){ return {dataHora:r.dataHora||'', material:r.material||'', qtd:num(r.qtd), recebidoPor:r.recebidoPor||''}; });
+    var total = num(document.getElementById('tTotal').value);
+    var saida = num(document.getElementById('tSaida').value);
+    return {
+      protocolo: genProtocolo(),
+      date: document.getElementById('fData').value || todayISO(),
+      mes: document.getElementById('fMes').value,
+      ano: document.getElementById('fAno').value,
+      totals: {
+        totalDiario: total, saida: saida, restante: total - saida,
+        reprografia: num(document.getElementById('tReprografia').value),
+        banca: num(document.getElementById('tBanca').value)
+      },
+      items: cleanItems,
+      materials: cleanMaterials,
+      observacoes: document.getElementById('fObs').value || '',
+      relator: document.getElementById('fRelator').value || '',
+      responsavel: document.getElementById('fResponsavel').value || '',
+      relatorAssinado: !!document.getElementById('sigRelator').checked,
+      responsavelAssinado: !!document.getElementById('sigResponsavel').checked,
+      createdAt: Date.now()
+    };
+  }
+
+  document.getElementById('sendBtn').addEventListener('click', function(){
+    var relator = document.getElementById('fRelator').value.trim();
+    var sig = document.getElementById('sigRelator').checked;
+    if (!relator) { toast('Preencha o nome do relator'); document.getElementById('fRelator').focus(); return; }
+    if (!sig) { toast('Marque a confirmação de assinatura do relator'); document.getElementById('sigRelator').focus(); return; }
+    var rep = buildReport();
+    var btn = document.getElementById('sendBtn');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    saveReport(rep).then(function(saved){
+      toast('Relatório enviado — protocolo ' + saved.protocolo);
+      clearForm();
+      showTab('list');
+    }).catch(function(err){
+      if (err.message !== 'unauthorized') toast(err.message || 'Não foi possível enviar agora');
+      console.error(err);
+    }).finally(function(){
+      btn.disabled = false; btn.textContent = 'Enviar relatório';
+    });
+  });
+
+  function mapReportRow(row){
+    return {
+      id: row.id,
+      protocolo: row.protocolo,
+      date: row.date,
+      mes: row.mes,
+      ano: row.ano,
+      status: row.status,
+      totals: {
+        totalDiario: Number(row.total_diario),
+        saida: Number(row.saida),
+        restante: Number(row.restante),
+        reprografia: Number(row.reprografia),
+        banca: Number(row.banca)
+      },
+      items: (row.report_items || []).map(function(it){
+        return { desc: it.descricao, valorUnit: Number(it.valor_unit), qtd: Number(it.qtd), valor: Number(it.valor) };
+      }),
+      materials: (row.report_materials || []).map(function(m){
+        return { dataHora: m.data_hora, material: m.material, qtd: Number(m.qtd), recebidoPor: m.recebido_por };
+      }),
+      observacoes: row.observacoes || '',
+      relator: row.relator || '',
+      responsavel: row.responsavel || '',
+      relatorAssinado: !!row.relator_assinado,
+      responsavelAssinado: !!row.responsavel_assinado,
+      createdAt: Number(row.created_at)
+    };
+  }
+
+  function loadReportsFromServer(){
+    return sb.from('reports')
+      .select('*, report_items(*), report_materials(*)')
+      .order('created_at', { ascending: false })
+      .then(function(res){
+        if (res.error) throw res.error;
+        reports = res.data.map(mapReportRow);
+        renderList();
+        setStatus('live');
+        return reports;
+      }).catch(function(err){
+        setStatus('offline', 'Não foi possível carregar os relatórios');
+        throw err;
+      });
+  }
+
+  function saveReport(rep){
+    var payload = {
+      date: rep.date, mes: rep.mes, ano: rep.ano,
+      totals: rep.totals, observacoes: rep.observacoes,
+      relator: rep.relator, responsavel: rep.responsavel,
+      relatorAssinado: rep.relatorAssinado, responsavelAssinado: rep.responsavelAssinado,
+      items: rep.items, materials: rep.materials
+    };
+    return sb.rpc('criar_relatorio', { payload: payload }).then(function(res){
+      if (res.error) throw res.error;
+      return sb.from('reports')
+        .select('*, report_items(*), report_materials(*)')
+        .eq('id', res.data.id)
+        .single();
+    }).then(function(res){
+      if (res.error) throw res.error;
+      var saved = mapReportRow(res.data);
+      reports.unshift(saved);
+      renderList();
+      return saved;
+    });
+  }
+
+  function setStatus(state, detail){
+    var dot = document.getElementById('statusDot');
+    var txt = document.getElementById('statusText');
+    if (state === 'live') {
+      dot.className = 'dot live';
+      txt.textContent = 'Ligado — ' + (currentUser ? currentUser.name : '');
+    } else if (state === 'saving') {
+      dot.className = 'dot local';
+      txt.textContent = 'Enviando…';
+    } else {
+      dot.className = 'dot warn';
+      txt.textContent = detail || 'Sem ligação';
+    }
+  }
+
+  function shareText(r){
+    var lines = [];
+    lines.push('RELATÓRIO DE OPERAÇÕES DIÁRIAS');
+    lines.push('Protocolo: ' + (r.protocolo||'—'));
+    lines.push(r.date + (r.mes ? ' — ' + r.mes + '/' + r.ano : ''));
+    lines.push('');
+    lines.push('Total diário: ' + money(r.totals.totalDiario));
+    lines.push('T. Saída: ' + money(r.totals.saida));
+    lines.push('T. Restante: ' + money(r.totals.restante));
+    lines.push('T. Reprografia: ' + money(r.totals.reprografia));
+    lines.push('T. Banca: ' + money(r.totals.banca));
+    if (r.items && r.items.length) {
+      lines.push(''); lines.push('Itens:');
+      r.items.forEach(function(it){ lines.push('- ' + it.desc + ' | valor unit. ' + money(it.valorUnit) + ' | qtd ' + it.qtd + ' | total ' + money(it.valor)); });
+    }
+    if (r.materials && r.materials.length) {
+      lines.push(''); lines.push('Entradas de material:');
+      r.materials.forEach(function(m){ lines.push('- ' + m.dataHora + ' | ' + m.material + ' | qtd ' + m.qtd + ' | recebido por ' + m.recebidoPor); });
+    }
+    if (r.observacoes) { lines.push(''); lines.push('Observações: ' + r.observacoes); }
+    lines.push('');
+    lines.push('Relator: ' + (r.relator||'—') + (r.relatorAssinado ? ' (assinado digitalmente)' : ''));
+    lines.push('Responsável: ' + (r.responsavel||'—') + (r.responsavelAssinado ? ' (assinado digitalmente)' : ''));
+    return lines.join('\n');
+  }
+
+  function simpleTable(doc, x, y, headers, rows, colWidths){
+    var totalW = colWidths.reduce(function(a,b){return a+b;},0);
+    doc.setFontSize(9); doc.setFont('helvetica','bold');
+    var cx = x;
+    headers.forEach(function(h,i){ doc.text(String(h), cx+3, y+11); cx += colWidths[i]; });
+    doc.setDrawColor(23,21,15);
+    doc.rect(x, y, totalW, 16);
+    y += 16;
+    doc.setFont('helvetica','normal');
+    rows.forEach(function(row){
+      var rh = 15;
+      doc.rect(x, y, totalW, rh);
+      var cx2 = x;
+      row.forEach(function(cell,i){ doc.text(String(cell), cx2+3, y+10); cx2 += colWidths[i]; });
+      y += rh;
+    });
+    return y + 12;
+  }
+
+  function buildPdf(r){
+    var jsPDFctor = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDFctor) throw new Error('Biblioteca de PDF não carregou (sem conexão ou bloqueada)');
+    var doc = new jsPDFctor({ unit: 'pt', format: 'a4' });
+    var hasAutoTable = typeof doc.autoTable === 'function';
+    var x = 40, y = 46;
+    doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.text('RELATÓRIO DE OPERAÇÕES DIÁRIAS', 297, y, {align:'center'});
+    y += 18;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('Protocolo: ' + (r.protocolo||'—') + '   ·   Data: ' + formatDateDisplay(r.date) + (r.mes ? ' ('+r.mes+'/'+r.ano+')' : ''), 297, y, {align:'center'});
+    y += 10;
+    doc.text('Enviado em ' + formatDateTime(r.createdAt) + '   ·   valores em MZN', 297, y, {align:'center'});
+    y += 16;
+
+    var totalsHead = ['Total Diário','T. Saída','T. Restante','T. Reprografia','T. Banca'];
+    var totalsBody = [[money(r.totals.totalDiario), money(r.totals.saida), money(r.totals.restante), money(r.totals.reprografia), money(r.totals.banca)]];
+    if (hasAutoTable) {
+      doc.autoTable({ startY: y, margin:{left:x,right:x}, theme:'grid', styles:{fontSize:9,cellPadding:5},
+        headStyles:{fillColor:[231,226,208], textColor:20, fontStyle:'bold'}, head:[totalsHead], body: totalsBody });
+      y = doc.lastAutoTable.finalY + 14;
+    } else {
+      y = simpleTable(doc, x, y, totalsHead, totalsBody, [103,103,103,103,103]);
+    }
+
+    if (r.items && r.items.length) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text('Detalhamento de Itens', x, y); y += 6;
+      var itHead = ['Descrição do material','Valor unit.','Qtd vendida','Valor total'];
+      var itBody = r.items.map(function(it){ return [it.desc, money(it.valorUnit), String(it.qtd), money(it.valor)]; });
+      if (hasAutoTable) {
+        doc.autoTable({ startY:y, margin:{left:x,right:x}, theme:'grid', styles:{fontSize:9,cellPadding:5},
+          headStyles:{fillColor:[231,226,208], textColor:20, fontStyle:'bold'}, head:[itHead], body: itBody });
+        y = doc.lastAutoTable.finalY + 14;
+      } else {
+        y = simpleTable(doc, x, y, itHead, itBody, [195,110,90,120]);
+      }
+    }
+
+    if (r.materials && r.materials.length) {
+      if (y > 680) { doc.addPage(); y = 46; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text('Entrada de Materiais (Itens Recebidos)', x, y); y += 6;
+      var mHead = ['Data/Hora','Material','Qtd','Recebido por'];
+      var mBody = r.materials.map(function(m){ return [m.dataHora, m.material, String(m.qtd), m.recebidoPor]; });
+      if (hasAutoTable) {
+        doc.autoTable({ startY:y, margin:{left:x,right:x}, theme:'grid', styles:{fontSize:9,cellPadding:5},
+          headStyles:{fillColor:[231,226,208], textColor:20, fontStyle:'bold'}, head:[mHead], body: mBody });
+        y = doc.lastAutoTable.finalY + 14;
+      } else {
+        y = simpleTable(doc, x, y, mHead, mBody, [110,140,60,105]);
+      }
+    }
+
+    if (y > 700) { doc.addPage(); y = 46; }
+    if (r.observacoes) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text('Observações', x, y); y += 14;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+      var obsLines = doc.splitTextToSize(r.observacoes, 515);
+      doc.text(obsLines, x, y); y += obsLines.length * 12 + 10;
+    }
+
+    if (y > 730) { doc.addPage(); y = 46; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text('Assinaturas', x, y); y += 16;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+    doc.text('Relator: ' + (r.relator||'—') + (r.relatorAssinado ? '  (assinado digitalmente)' : ''), x, y); y += 15;
+    doc.text('Responsável: ' + (r.responsavel||'—') + (r.responsavelAssinado ? '  (assinado digitalmente)' : ''), x, y);
+
+    return doc;
+  }
+
+  function downloadPdf(r){
+    var doc;
+    try { doc = buildPdf(r); }
+    catch(err){ console.error(err); toast('Erro ao gerar PDF: ' + (err && err.message ? err.message : 'tente recarregar a página')); return; }
+    var fileName = 'relatorio-' + r.date + '-' + (r.protocolo||'') + '.pdf';
+    doc.save(fileName);
+    toast('PDF baixado');
+  }
+
+  function shareOrDownloadPdf(r){
+    var doc;
+    try { doc = buildPdf(r); }
+    catch(err){ console.error(err); toast('Erro ao gerar PDF: ' + (err && err.message ? err.message : 'tente recarregar a página')); return; }
+    var fileName = 'relatorio-' + r.date + '-' + (r.protocolo||'') + '.pdf';
+    doc.save(fileName);
+    toast('PDF baixado — abrindo WhatsApp para anexar');
+    window.open('https://wa.me/?text=' + encodeURIComponent(shareText(r)), '_blank');
+  }
+
+  function renderList(){
+    var el = document.getElementById('listContent');
+    var badge = document.getElementById('countBadge');
+    if (reports.length === 0) {
+      badge.style.display = 'none';
+      el.innerHTML = '<div class="empty"><div class="glyph">◌</div><p>Nenhum relatório enviado ainda.</p></div>';
+      return;
+    }
+    badge.style.display = 'inline-block';
+    badge.textContent = reports.length;
+    el.innerHTML = '';
+    reports.forEach(function(r){
+      var det = document.createElement('details');
+      det.className = 'report-item';
+      var itemsRows = (r.items||[]).map(function(it){
+        return '<tr><td>'+escapeHtml(it.desc)+'</td><td class="num">'+money(it.valorUnit)+'</td><td class="num">'+it.qtd+'</td><td class="num">'+money(it.valor)+'</td></tr>';
+      }).join('');
+      var matRows = (r.materials||[]).map(function(m){
+        return '<tr><td>'+escapeHtml(m.dataHora)+'</td><td>'+escapeHtml(m.material)+'</td><td class="num">'+m.qtd+'</td><td>'+escapeHtml(m.recebidoPor)+'</td></tr>';
+      }).join('');
+      var mailHref = 'mailto:?subject=' + encodeURIComponent('Relatório de Operações — ' + formatDateDisplay(r.date)) + '&body=' + encodeURIComponent(shareText(r));
+      det.innerHTML =
+        '<summary>' +
+          '<div class="ri-left">' +
+            '<div class="ri-date">' + formatDateDisplay(r.date) + '</div>' +
+            '<div class="ri-sub">Relator: ' + escapeHtml(r.relator||'—') + ' · ' + escapeHtml(r.protocolo||'') + '</div>' +
+          '</div>' +
+          '<div class="ri-total"><div class="v">' + money(r.totals.totalDiario) + '</div><div class="l">total diário</div></div>' +
+        '</summary>' +
+        '<div class="ri-body">' +
+          '<div class="ri-section">' +
+            '<h3>Totais</h3>' +
+            '<div class="totals-grid">' +
+              '<div class="tstat"><div class="l">T. Saída</div><div class="v">'+money(r.totals.saida)+'</div></div>' +
+              '<div class="tstat"><div class="l">T. Restante</div><div class="v">'+money(r.totals.restante)+'</div></div>' +
+              '<div class="tstat"><div class="l">T. Reprografia</div><div class="v">'+money(r.totals.reprografia)+'</div></div>' +
+              '<div class="tstat"><div class="l">T. Banca</div><div class="v">'+money(r.totals.banca)+'</div></div>' +
+            '</div>' +
+          '</div>' +
+          (itemsRows ? '<div class="ri-section"><h3>Itens</h3><table class="ri-table"><thead><tr><th>Material</th><th>Val. unit.</th><th>Qtd</th><th>Total</th></tr></thead><tbody>'+itemsRows+'</tbody></table></div>' : '') +
+          (matRows ? '<div class="ri-section"><h3>Entrada de materiais</h3><table class="ri-table"><thead><tr><th>Data/hora</th><th>Material</th><th>Qtd</th><th>Recebido por</th></tr></thead><tbody>'+matRows+'</tbody></table></div>' : '') +
+          (r.observacoes ? '<div class="ri-section"><h3>Observações</h3><p class="obs-text">'+escapeHtml(r.observacoes)+'</p></div>' : '') +
+          '<div class="ri-section">' +
+            '<h3>Assinaturas</h3>' +
+            '<div class="sig-line"><b>Relator:</b> ' + escapeHtml(r.relator||'—') + (r.relatorAssinado ? ' — assinado digitalmente' : '') + '</div>' +
+            '<div class="sig-line"><b>Responsável:</b> ' + escapeHtml(r.responsavel||'—') + (r.responsavelAssinado ? ' — assinado digitalmente' : '') + '</div>' +
+            '<div class="proto">Protocolo ' + escapeHtml(r.protocolo||'—') + ' · enviado em ' + formatDateTime(r.createdAt) + '</div>' +
+          '</div>' +
+          '<div class="share-row">' +
+            '<button type="button" class="wa" data-wa>Enviar no WhatsApp (PDF)</button>' +
+            '<button type="button" class="copy" data-pdf>Baixar PDF</button>' +
+            '<a class="mail" href="'+mailHref+'">Enviar por e-mail</a>' +
+            '<button type="button" class="copy" data-copy>Copiar texto</button>' +
+          '</div>' +
+        '</div>';
+      det.querySelector('[data-copy]').addEventListener('click', function(){
+        var text = shareText(r);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function(){ toast('Texto copiado'); }).catch(function(){ toast('Não foi possível copiar'); });
+        } else { toast('Cópia não suportada neste navegador'); }
+      });
+      det.querySelector('[data-pdf]').addEventListener('click', function(){
+        downloadPdf(r);
+      });
+      det.querySelector('[data-wa]').addEventListener('click', function(){
+        shareOrDownloadPdf(r);
+      });
+      el.appendChild(det);
+    });
+  }
+  function escapeHtml(s){
+    return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+  }
+  function formatDateDisplay(iso){
+    if (!iso) return '—';
+    var p = iso.split('-');
+    if (p.length !== 3) return iso;
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
+  function formatDateTime(ts){
+    if (!ts) return '—';
+    var d = new Date(ts);
+    var pad = function(n){ return n<10 ? '0'+n : ''+n; };
+    return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  function carregarPerfil(user){
+    return sb.from('profiles').select('name, role').eq('id', user.id).single().then(function(res){
+      if (res.error) throw res.error;
+      currentUser = { id: user.id, email: user.email, name: res.data.name, role: res.data.role };
+    });
+  }
+
+  function iniciarApp(){
+    return sb.auth.getUser().then(function(res){
+      if (res.error || !res.data.user) { throw new Error('sem-sessao'); }
+      return carregarPerfil(res.data.user);
+    }).then(function(){
+      showApp();
+      setStatus('saving');
+      return loadReportsFromServer();
+    }).catch(function(err){
+      if (err && err.message === 'sem-sessao') { showLoginScreen(); return; }
+      showLoginScreen();
+      setStatus('offline');
+    });
+  }
+
+  sb.auth.getSession().then(function(res){
+    if (res.data && res.data.session) { iniciarApp(); } else { showLoginScreen(); }
+  });
+
+})();
+</script>
+</body>
+</html>
